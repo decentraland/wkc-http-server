@@ -14,31 +14,19 @@ const RESOURCE_ARGUMENT_EXTRACTORS = 'resource:argumentextractors'
 
 type HandlerReturnType = Promise<IHttpServerComponent.IResponse>
 
-/**
- * @public
- */
-export type AsyncRequestHandlersOf<T extends object> = {
+type AsyncRequestHandlersOf<T extends object> = {
   [K in keyof T]: T[K] extends (...args: any[]) => HandlerReturnType ? K : never;
 }[keyof T]
 
-/**
- * @public
- */
-export type AsyncResourceDecorator<Base extends Resource = Resource> =
+type AsyncResourceDecorator<Base extends Resource = Resource> =
   <T extends Base, K extends AsyncRequestHandlersOf<T>, V>(classPrototype: T, propertyKey: K, descriptor?: TypedPropertyDescriptor<V>) => void
 
-/**
- * @public
- */
-export type AsyncResourceParameterDecorator =
+type ParameterDecorator =
   <Base extends Resource, K extends AsyncRequestHandlersOf<Base>>(target: Base, propertyKey: K, parameterIndex: number) => void
 
 type ClassDecorator = <TFunction extends new (...args: any) => Resource>(target: TFunction) => TFunction | void
 
-/**
- * @public
- */
-export type Extractor<Context = any> = (context: Context) => Promise<any>
+type Extractor<Context = any> = (context: Context) => Promise<any>
 
 function getOrCreateMetadata<V, T extends object>(key: string, target: T, gen: () => V): V {
   const ret = Reflect.getMetadata(key, target) ?? gen()
@@ -57,10 +45,8 @@ function getHandlerSet(target: object): Set<string | symbol | number> {
 function getParamExtractors<T extends CallableFunction>(target: T): Array<Extractor | null> {
   return getOrCreateMetadata(RESOURCE_ARGUMENT_EXTRACTORS, target, () => new Array(target.length).map((_) => null))
 }
-/**
- * @public
- */
-export function defineParamExtractor(target: any, method: any, paramIndex: number, extractor: Extractor<IHttpServerComponent.DefaultContext>) {
+
+function defineParamExtractor(target: any, method: any, paramIndex: number, extractor: Extractor<IHttpServerComponent.DefaultContext>) {
   const args = getParamExtractors(target[method])
   if (args[paramIndex]) {
     throw new Error(`Parameter #${paramIndex} of ${target.constructor.name} already defined`)
@@ -105,7 +91,7 @@ export abstract class Resource {
         getHandlerSet(resource).add(method)
       }
 
-  static UrlParam = (param: string): AsyncResourceParameterDecorator =>
+  static UrlParam = (param: string): ParameterDecorator =>
     (target, method, paramIndex) => {
       defineParamExtractor(target, method, paramIndex, async (ctx) => {
         const ret = (ctx as any).params[param]
@@ -116,7 +102,7 @@ export abstract class Resource {
       })
     }
 
-  static RequestContext: AsyncResourceParameterDecorator =
+  static RequestContext: ParameterDecorator =
     (target, method, paramIndex) => {
       defineParamExtractor(target, method, paramIndex, async (ctx) => {
         return ctx
