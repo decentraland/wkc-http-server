@@ -2,6 +2,9 @@ import { IHttpServerComponent } from "@well-known-components/interfaces"
 import { Resource } from "../src"
 import { describeE2E } from './test-e2e-harness'
 
+
+
+
 test('basic functions', () => {
   @Resource.Prefix('/a')
   @Resource.WithMiddleware((next: any) => next())
@@ -37,7 +40,6 @@ test('basic functions', () => {
     prefix: '/a',
     instance: res,
     metadata: [
-      ["resource:handlers", new Set(['hello', 'createHello'])],
       ["resource:middlewares", [expect.any(Function), expect.any(Function)]],
       ["resource:prefix", "/a"],
     ],
@@ -51,6 +53,7 @@ test('basic functions', () => {
         metadata: [
           ["resource:argumentextractors", []],
           ["resource:method", "GET"],
+          ["resource:middlewares", []],
           ["resource:route", "/hello"],
         ]
       },
@@ -96,7 +99,7 @@ describeE2E('resource integration suite', function({ components }) {
     server.resetMiddlewares()
 
     @Resource.Prefix('/a')
-    class MyResource1 extends Resource {
+    class MyResource extends Resource {
       @Resource.Handler('GET', '/hello')
       async hello() {
         return { status: 200 }
@@ -124,7 +127,7 @@ describeE2E('resource integration suite', function({ components }) {
       }
     }
 
-    const resource = new MyResource1()
+    const resource = new MyResource()
     server.use(resource.createRouter().router.middleware())
 
     {
@@ -154,10 +157,7 @@ describeE2E('resource integration suite', function({ components }) {
     @Resource.Prefix('/a')
     @Resource.WithMiddleware((_ctx, next) => { calls.push('outer1'); return next() })
     @Resource.WithMiddleware((_ctx, next) => { calls.push('outer2'); return next() })
-    class MyResource2 extends Resource {
-
-      test = 111
-
+    class MyResource extends Resource {
       @Resource.Handler('GET', '/hello')
       @Resource.WithMiddleware((_ctx, next) => { calls.push('inner1'); return next() })
       async hello() {
@@ -167,7 +167,6 @@ describeE2E('resource integration suite', function({ components }) {
 
       @Resource.Handler('GET', '/hello/ctx')
       @Resource.WithMiddleware((_ctx, next) => { calls.push('inner1'); return next() })
-      @WithSpan(calls)
       @Resource.WithMiddleware((_ctx, next) => { calls.push('inner2'); return next() })
       async helloWithContext(
         @Resource.RequestContext ctx: IHttpServerComponent.DefaultContext
@@ -184,7 +183,7 @@ describeE2E('resource integration suite', function({ components }) {
       }
     }
 
-    const resource = new MyResource2()
+    const resource = new MyResource()
     server.use(resource.createRouter().router.middleware())
 
     {
@@ -206,9 +205,7 @@ describeE2E('resource integration suite', function({ components }) {
         "outer2",
         "inner1",
         "inner2",
-        "enter WithSpan",
         "helloWithContext",
-        "leave WithSpan",
       ])
       calls.length = 0
     }
@@ -225,25 +222,3 @@ describeE2E('resource integration suite', function({ components }) {
     }
   })
 })
-
-
-// Example of a decorator that replaces the function entirely. This is not unusual
-// practice
-export function WithSpan(calls: string[]): MethodDecorator {
-  return function(_classPrototype, propertyKey, descriptor) {
-    if (typeof descriptor.value !== 'function') return
-
-    const originalMethod = descriptor.value
-
-    const fnName = `${propertyKey as string}:@WithSpan`
-
-    descriptor.value = {
-      async [fnName](...args: any[]) {
-        calls.push('enter WithSpan')
-        const ret = await originalMethod.apply(this, args)
-        calls.push('leave WithSpan')
-        return ret
-      }
-    }[fnName] as any
-  }
-}

@@ -11,8 +11,6 @@ const RESOURCE_ROUTE = 'resource:route'
 const RESOURCE_HANDLERS = 'resource:handlers'
 const RESOURCE_MIDDLEWARES = 'resource:middlewares'
 const RESOURCE_ARGUMENT_EXTRACTORS = 'resource:argumentextractors'
-const INTERNAL_METADATA = 'internal-metadata'
-const ROOT = ':root:'
 
 type HandlerReturnType = Promise<IHttpServerComponent.IResponse>
 
@@ -42,37 +40,30 @@ type ClassDecorator = <TFunction extends new (...args: any) => Resource>(target:
  */
 export type Extractor<Context = any> = (context: Context) => Promise<any>
 
-type InternalMetadata = Record<string | symbol | number, any>
-
-function getOrCreateInternalMetadata(prototype: object, method: string | number | symbol): InternalMetadata {
-  const ret: InternalMetadata = Reflect.getMetadata(INTERNAL_METADATA, prototype) ?? {}
-  Reflect.defineMetadata(INTERNAL_METADATA, ret, prototype)
-  ret[method] = ret[method] ?? {}
-  return ret[method]
+function getOrCreateMetadata<V, T extends object>(key: string, target: T, gen: () => V): V {
+  const ret = Reflect.getMetadata(key, target) ?? gen()
+  Reflect.defineMetadata(key, ret, target)
+  return ret
 }
 
-function getOrCreateMetadata<V, T extends object>(key: string, target: T, method: string | symbol | number, gen: () => V): V {
-  const map = getOrCreateInternalMetadata(target, method)
-  map[key] = map[key] ?? gen()
-  return map[key]
+function getMiddlewares(target: object): any[] {
+  return getOrCreateMetadata(RESOURCE_MIDDLEWARES, target, () => [])
 }
 
-function getHandlerSet(prototype: object): Set<string | symbol | number> {
-  return getOrCreateMetadata(RESOURCE_HANDLERS, prototype, ROOT, () => new Set())
+function getHandlerSet(target: object): Set<string | symbol | number> {
+  return getOrCreateMetadata(RESOURCE_HANDLERS, target, () => new Set())
 }
 
-function getParamExtractors(prototype: object, method: string | number | symbol): Array<Extractor | null> {
-  const fn = (prototype as any)[method] as CallableFunction
-  return getOrCreateMetadata(RESOURCE_ARGUMENT_EXTRACTORS, prototype, method, () => new Array(fn.length).map((_) => null))
+function getParamExtractors<T extends CallableFunction>(target: T): Array<Extractor | null> {
+  return getOrCreateMetadata(RESOURCE_ARGUMENT_EXTRACTORS, target, () => new Array(target.length).map((_) => null))
 }
-
 /**
  * @public
  */
-export function defineParamExtractor(prototype: any, method: any, paramIndex: number, extractor: Extractor<IHttpServerComponent.DefaultContext>) {
-  const args = getParamExtractors(prototype, method)
+export function defineParamExtractor(target: any, method: any, paramIndex: number, extractor: Extractor<IHttpServerComponent.DefaultContext>) {
+  const args = getParamExtractors(target[method])
   if (args[paramIndex]) {
-    throw new Error(`Parameter #${paramIndex} of ${prototype.constructor.name}.${method} already defined`)
+    throw new Error(`Parameter #${paramIndex} of ${target.constructor.name} already defined`)
   }
   args[paramIndex] = extractor
 }
@@ -106,18 +97,17 @@ export type ApiDefinitionEntry = {
 export abstract class Resource {
   static Handler: (method: IHttpServerComponent.HTTPMethod, route: string) => AsyncResourceDecorator =
     (httpMethod, httpRoute) =>
-      (prototype, method, _descriptor) => {
+      (resource, method, _descriptor) => {
         if (typeof httpRoute != 'string' || !httpRoute.startsWith('/'))
           throw new Error('http route must start with /')
-        const meta = getOrCreateInternalMetadata(prototype, method)
-        meta[RESOURCE_METHOD] = httpMethod
-        meta[RESOURCE_ROUTE] = httpRoute
-        getHandlerSet(prototype).add(method)
+        Reflect.defineMetadata(RESOURCE_METHOD, httpMethod, resource[method] as any)
+        Reflect.defineMetadata(RESOURCE_ROUTE, httpRoute, resource[method] as any)
+        getHandlerSet(resource).add(method)
       }
 
   static UrlParam = (param: string): AsyncResourceParameterDecorator =>
-    (prototype, method, paramIndex) => {
-      defineParamExtractor(prototype, method, paramIndex, async (ctx) => {
+    (target, method, paramIndex) => {
+      defineParamExtractor(target, method, paramIndex, async (ctx) => {
         const ret = (ctx as any).params[param]
         if (ret === undefined) {
           throw new HttpErrors.InternalServerError(`Could not resolve param ${param}`)
@@ -127,8 +117,8 @@ export abstract class Resource {
     }
 
   static RequestContext: AsyncResourceParameterDecorator =
-    (prototype, method, paramIndex) => {
-      defineParamExtractor(prototype, method, paramIndex, async (ctx) => {
+    (target, method, paramIndex) => {
+      defineParamExtractor(target, method, paramIndex, async (ctx) => {
         return ctx
       })
     }
@@ -141,9 +131,9 @@ export abstract class Resource {
   static WithMiddleware: (middlware: Middleware<any>) => ClassDecorator & AsyncResourceDecorator =
     (middleware) => function(target: any, key?: string | number | symbol) {
       if (typeof key === 'undefined') {
-        getOrCreateMetadata(RESOURCE_MIDDLEWARES, target.prototype, ROOT, () => [] as Middleware<any>[]).unshift(middleware)
+        getMiddlewares(target).unshift(middleware)
       } else {
-        getOrCreateMetadata(RESOURCE_MIDDLEWARES, target, key, () => [] as Middleware<any>[]).unshift(middleware)
+        getMiddlewares(target[key]).unshift(middleware)
       }
     }
 
@@ -154,34 +144,39 @@ export abstract class Resource {
     (target: any) => {
       if (typeof prefix != 'string' || !prefix.startsWith('/'))
         throw new Error('prefix must start with /')
-
-      const meta = getOrCreateInternalMetadata(target.prototype, ROOT)
-      meta[RESOURCE_PREFIX] = prefix
+      Reflect.defineMetadata(RESOURCE_PREFIX, prefix, target)
     }
 
   static getApiDefinition(res: Resource): ApiDefinition {
-    const root = getOrCreateInternalMetadata(res, ROOT)
+    const prototype = Object.getPrototypeOf(res)
+
+    const prefix = Reflect.getMetadata(RESOURCE_PREFIX, res.constructor)
+
+    const middlewares = getMiddlewares(prototype.constructor)
 
     const ret: ApiDefinition = {
-      middlewares: root[RESOURCE_MIDDLEWARES] ?? [],
-      prefix: root[RESOURCE_PREFIX],
+      middlewares,
+      prefix,
       instance: res,
       resources: [],
-      metadata: Object.keys(root).sort().map(key => [key, root[key]])
+      metadata: Reflect.getMetadataKeys(prototype.constructor).sort().map(key => [key, Reflect.getMetadata(key, prototype.constructor)])
     }
 
-    for (const handlerName of getHandlerSet(res)) {
-      const paramExtractors = getParamExtractors(res, handlerName)
+    for (const handler of getHandlerSet(prototype)) {
+      const impl: any = (res as any)[handler]
+      const method: IHttpServerComponent.HTTPMethod = Reflect.getMetadata(RESOURCE_METHOD, impl).toUpperCase()
+      const route: string = Reflect.getMetadata(RESOURCE_ROUTE, impl)
+
+      const paramExtractors = getParamExtractors(impl)
       paramExtractors.forEach(($, ix) => {
         if (!$) {
           throw new Error(
-            `The method ${String(handlerName)} is lacking an annotation for the parameter #${ix}.\n` +
+            `The method ${String(handler)} is lacking an annotation for the parameter #${ix}.\n` +
             `The router does not know how to fulfill that parameter.`
           )
         }
       })
 
-      const impl: any = (res as any)[handlerName]
       const delegate = async (context: any) => {
         const args: any[] = []
         for (const extractor of paramExtractors) {
@@ -190,17 +185,18 @@ export abstract class Resource {
         return await impl.apply(res, args)
       }
 
-      const meta = getOrCreateInternalMetadata(res, handlerName)
+      const middlewares = getMiddlewares(prototype[handler])
       const entry: ApiDefinitionEntry = {
-        middlewares: meta[RESOURCE_MIDDLEWARES] ?? [],
+        middlewares,
         delegate,
-        httpRoute: meta[RESOURCE_ROUTE],
-        httpMethod: meta[RESOURCE_METHOD],
-        handlerName,
-        metadata: Object.keys(meta).sort().map(key => [key, meta[key]])
+        httpRoute: route,
+        httpMethod: method,
+        handlerName: handler,
+        metadata: Reflect.getMetadataKeys(prototype[handler]).sort().map(key => [key, Reflect.getMetadata(key, prototype[handler])])
       }
       ret.resources.push(entry)
     }
+
     return ret
   }
 
