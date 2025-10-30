@@ -31,4 +31,6 @@ export type ServerComponents = {
  */
 export type IHttpServerOptions = {
   cors?: CorsOptions
+  keepAliveTimeout?: number
+  headersTimeout?: number
 } & ({ https: https.ServerOptions } | { http: http.ServerOptions })
