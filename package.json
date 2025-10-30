@@ -1,6 +1,6 @@
 {
   "name": "@dcl/wkc-http-server",
-  "version": "0.0.1",
+  "version": "1.0.1",
   "description": "http server component",
   "main": "dist/index.js",
   "typings": "dist/index.d.ts",
