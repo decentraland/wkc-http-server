@@ -24,7 +24,6 @@
   },
   "homepage": "https://github.com/decentraland/wkc-http-server#readme",
   "devDependencies": {
-    "@microsoft/api-extractor": "^7.51.1",
     "@types/busboy": "^1.5.4",
     "@types/destroy": "^1.0.0",
     "@types/node": "^20.3.2",
