@@ -14,7 +14,7 @@ build:
 	./node_modules/.bin/tsc -p tsconfig.json
 
 test:
-	node --inspect ./node_modules/.bin/jest --forceExit --detectOpenHandles --coverage --verbose $(TEST_FILE)
+	./node_modules/.bin/jest --forceExit --detectOpenHandles --coverage --verbose $(TEST_FILE)
 
 test-esm:
 	node --experimental-vm-modules ./node_modules/.bin/jest --forceExit --detectOpenHandles --coverage --verbose
