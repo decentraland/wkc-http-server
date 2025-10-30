@@ -17,9 +17,14 @@ export function getServer(
   options: Partial<IHttpServerOptions>,
   listener: http.RequestListener
 ): http.Server | https.Server {
-  if ('https' in options && options.https) return https.createServer(options.https, listener)
-  if ('http' in options && options.http) return http.createServer(options.http, listener)
-  return http.createServer(listener)
+  let server: http.Server | https.Server
+  if ('https' in options && options.https) server = https.createServer(options.https, listener)
+  if ('http' in options && options.http) server = http.createServer(options.http, listener)
+  else server = http.createServer(listener)
+
+  server.keepAliveTimeout = options.keepAliveTimeout ?? 70_000
+  server.headersTimeout = options.headersTimeout ?? 75_000
+  return server
 }
 
 const NAME = Symbol.toStringTag
