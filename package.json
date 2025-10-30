@@ -1,5 +1,5 @@
 {
-  "name": "@well-known-components/http-server",
+  "name": "@dcl/wkc-http-server",
   "version": "2.0.0",
   "description": "http server component",
   "main": "dist/index.js",
@@ -7,13 +7,13 @@
   "scripts": {},
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/well-known-components/http-server.git"
+    "url": "git+https://github.com/decentraland/wkc-http-server.git"
   },
   "keywords": [],
   "author": "",
   "license": "Apache-2.0",
   "bugs": {
-    "url": "https://github.com/well-known-components/http-server/issues"
+    "url": "https://github.com/decentraland/wkc-http-server/issues"
   },
   "prettier": {
     "printWidth": 120,
@@ -22,7 +22,7 @@
     "trailingComma": "none",
     "tabWidth": 2
   },
-  "homepage": "https://github.com/well-known-components/http-server#readme",
+  "homepage": "https://github.com/decentraland/wkc-http-server#readme",
   "devDependencies": {
     "@microsoft/api-extractor": "^7.51.1",
     "@types/busboy": "^1.5.4",

@@ -1,0 +1,22 @@
+on:
+  push:
+    branches-ignore:
+      - "main"
+  pull_request:
+
+name: PR Validation
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Use Node.js 18.x
+        uses: actions/setup-node@v4
+        with:
+          node-version: 18.x
+      - name: npm ci
+        run:  npm ci
+      - name: build
+        run:  make build
+      - name: test
+        run:  make test bench
